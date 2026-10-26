@@ -3,6 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>老友記巴士站 - 穩定版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-size: 18px; background-color: #f0f4f8; color: #111; }
+        .btn-large { min-height: 70px; font-size: 1.5rem; font-weight: bold; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+    <header class="bg-blue-600 text-white p-4 text-center shadow-md">
+        <h1 class="text-3xl font-black">🚌 老友記巴士站</h1>
+        <p class="text-sm mt-1">簡潔大字版 · 隨時切換去回程</p>
+    </header>
+
+    <main class="container mx-auto p-4 max-w-md flex-grow">
+
+        <!-- 常用線路 -->
+        <div class="bg-white rounded-2xl p-4 shadow mb-6">
+            <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 常用巴士線</h2>
+            <div class="grid grid-cols-3 gap-3">
+                <button onclick="handleRouteSelect('1A')" class="btn-large bg-blue-500 text-white rounded-xl shadow">1A</button>
+                <button onclick="handleRouteSelect('6')" class="btn-large bg-blue-500 text-white rounded-xl shadow">6</button>
+                <button onclick="handleRouteSelect('27')" class="btn-large bg-blue-500 text-white rounded-xl shadow">27</button>
+                <button onclick="handleRouteSelect('213X')" class="btn-large bg-blue-500 text-white rounded-xl shadow">213X</button>
+                <button onclick="handleRouteSelect('14')" class="btn-large bg-blue-500 text-white rounded-xl shadow">14</button>
+                <button onclick="handleRouteSelect('6D')" class="btn-large bg-blue-500 text-white rounded-xl shadow">6D</button>
+            </div>
+        </div>
+
+        <!-- 自訂輸入 -->
+        <div class="bg-white rounded-2xl p-4 shadow mb-6">
+            <h2 class="text-xl font-bold mb-2 text-gray-700">🔎 輸入其他路線</h2>
+            <div class="flex gap-2">
+                <input type="text" id="customRouteInput" placeholder="例如: 27" class="border-2 border-gray-300 rounded-xl p-3 text-2xl w-full uppercase text-center font-bold">
+                <button onclick="searchCustomRoute()" class="bg-green-600 text-white px-6 rounded-xl text-xl font-bold shadow">查詢</button>
+            </div>
+        </div>
+
+        <!-- 結果顯示區 -->
+        <div id="resultBox" class="bg-white rounded-2xl p-5 shadow hidden">
+            <div class="flex justify-between items-center mb-3">
+                <h2 id="boxTitle" class="text-xl font-black text-blue-800">路線資訊</h2>
+                <button onclick="clearResult()" class="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg font-bold">關閉</button>
+            </div>
+
+            <!-- 方向切換按鈕區 -->
+            <div id="directionSelector" class="grid grid-cols-2 gap-2 mb-4"></div>
+
+            <!-- 站點與 ETA 列表 -->
+            <div id="boxContent" class="space-y-3 max-h-[500px] overflow-y-auto pr-1"></div>
+        </div>
+
+    </main>
+
+    <footer class="bg-gray-200 text-center py-3 text-sm text-gray-600">
+        香港九巴開放數據實時支援
+    </footer>
+
+    <script>
+        function handleRouteSelect(routeStr) {
+            console.log("Clicked route:", routeStr);
+            const clean = routeStr.trim().toUpperCase();
+            document.getElementById('customRouteInput').value = clean;
+            showDirectionSelector(clean);
+        }
+
+        function searchCustomRoute() {
+            const val = document.getElementById('customRouteInput').value.trim().toUpperCase();
+            if(!val) { alert('請先輸入線號！'); return; }
+            showDirectionSelector(val);
+        }
+
+        function clearResult() {
+            document.getElementById('resultBox').classList.add('hidden');
+        }
+
+        function showDirectionSelector(route) {
+            const box = document.getElementById('resultBox');
+            const title = document.getElementById('boxTitle');
+            const dirSelector = document.getElementById('directionSelector');
+            const content = document.getElementById('boxContent');
+
+            box.classList.remove('hidden');
+            title.innerText = `${route} 號線`;
+            
+            // 立即顯示去回程切換掣
+            dirSelector.innerHTML = `
+                <button onclick="loadAllStops('${route}', 'outbound')" class="bg-blue-600 text-white p-3 rounded-xl font-bold text-base shadow text-center">
+                    👉 去程
+                </button>
+                <button onclick="loadAllStops('${route}', 'inbound')" class="bg-emerald-600 text-white p-3 rounded-xl font-bold text-base shadow text-center">
+                    👈 回程
+                </button>
+            `;
+            
+            // 預設載入去程
+            loadAllStops(route, 'outbound');
+        }
+
+        async function loadAllStops(route, directionStr) {
+            const content = document.getElementById('boxContent');
+            content.innerHTML = `<p class="text-blue-600 text-center py-4 font-bold">⏳ 正在讀取 ${directionStr === 'outbound' ? '去程' : '回程'} 車站...</p>`;
+
+            try {
+                const url = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${directionStr}/1`;
+                console.log("Fetching stops URL:", url);
+
+                const res = await fetch(url);
+                const json = await res.json();
+
+                if (!json.data || json.data.length === 0) {
+                    throw new Error('此方向暫無站點');
+                }
+
+                const stops = json.data;
+                content.innerHTML = `<p class="text-green-600 font-bold mb-2">✅ 共 ${stops.length} 個車站：</p>`;
+
+                // 產生全部站卡片
+                for (let i = 0; i < stops.length; i++) {
+                    const stopId = stops[i].stop;
+                    const stopNum = i + 1;
+                    const cardId = `stop-card-${route}-${directionStr}-${stopId}-${i}`;
+
+                    content.innerHTML += `
+                        <div id="${cardId}" class="bg-blue-50 p-3 rounded-xl border border-blue-200 shadow-sm">
+                            <div class="text-xs text-gray-500 font-bold">站點 ${stopNum}</div>
+                            <div class="text-lg font-bold text-gray-800">載入中...</div>
+                            <div class="text-sm text-gray-400">⏱️ 計算中...</div>
+                        </div>
+                    `;
+
+                    // 非同步抓詳細資料
+                    fetchStopDetails(stopId, route, cardId);
+                }
+
+            } catch (err) {
+                console.error(err);
+                content.innerHTML = `<p class="text-red-600 font-bold text-center py-4">❌ 讀取失敗 (可能此方向不適用)：請試另一方向。</p>`;
+            }
+        }
+
+        async function fetchStopDetails(stopId, route, cardId) {
+            try {
+                const stopRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${stopId}`);
+                const stopJson = await stopRes.json();
+                const stopName = stopJson.data ? stopJson.data.name_tc : stopId;
+
+                const etaRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);
+                const etaJson = await etaRes.json();
+                
+                let etaText = '暫無資料';
+                if (etaJson.data) {
+                    const match = etaJson.data.filter(e => e.route.toUpperCase() === route.toUpperCase());
+                    if (match.length > 0) {
+                        etaText = match.map(e => {
+                            if (!e.eta) return '到達中';
+                            const diff = Math.round((new Date(e.eta) - new Date()) / 60000);
+                            return diff <= 0 ? '即將到站' : `${diff}分鐘`;
+                        }).slice(0, 2).join(' ｜ ');
+                    }
+                }
+
+                const card = document.getElementById(cardId);
+                if (card) {
+                    card.innerHTML = `
+                        <div class="text-xs text-gray-500 font-bold">${card.querySelector('.text-xs').innerText}</div>
+                        <div class="text-lg font-bold text-gray-800">${stopName}</div>
+                        <div class="text-xl font-black text-red-600 bg-white p-2 rounded-lg text-center mt-1 border border-red-100">
+                            ⏱️ ${etaText}
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                const card = document.getElementById(cardId);
+                if (card && card.querySelector('.text-lg')) {
+                    card.querySelector('.text-lg').innerText = '站點載入超時';
+                }
+            }
+        }
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>老友記巴士站 - 來回方向切換版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>

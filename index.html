@@ -2,33 +2,32 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <title>極簡測試版</title>
+    <title>JSON 結構偵測版</title>
 </head>
-<body style="font-size: 24px; padding: 20px;">
-    <h1>🧪 極簡測試按鈕</h1>
+<body style="font-size: 20px; padding: 20px;">
+    <h1>🧪 27 號 API 結構偵測</h1>
     
-    <!-- 直接寫死行 Javascript，睇吓出唔出到 alert -->
-    <button onclick="alert('撳咗 27 掣！'); test27();" style="padding: 20px; font-size: 24px; background: yellow;">
-        按呢度測試 27
+    <button onclick="test27()" style="padding: 20px; font-size: 22px; background: lightgreen;">
+        點擊測試 27 號 API
     </button>
 
-    <div id="log" style="margin-top: 20px; color: blue;"></div>
+    <pre id="log" style="margin-top: 20px; background: #eee; padding: 15px; font-size: 16px; white-space: pre-wrap;"></pre>
 
     <script>
         async function test27() {
             const logDiv = document.getElementById('log');
-            logDiv.innerHTML = "正在連線 27 號 API...";
+            logDiv.innerText = "正在連線 27 號 API...\n";
             
             try {
                 const url = "https://data.etabus.gov.hk/v1/transport/kmb/route/27";
-                logDiv.innerHTML += "<br>URL: " + url;
-                
                 const res = await fetch(url);
-                const data = await res.json();
+                const json = await res.json();
                 
-                logDiv.innerHTML += `<br><span style="color: green;">成功！回傳咗 ${data.data.length} 個方向。</span>`;
+                // 直接將整個 JSON 印出嚟，睇下裏面究竟有咩結構
+                logDiv.innerText += "API 完整回傳內容：\n" + JSON.stringify(json, null, 2);
+                
             } catch (err) {
-                logDiv.innerHTML += `<br><span style="color: red;">失敗: ${err.message}</span>`;
+                logDiv.innerText += "\n[錯誤]: " + err.message;
             }
         }
     </script>

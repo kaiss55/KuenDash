@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>老友記巴士站 - 定位附近版</title>
+    <title>老友記巴士站 - 路線定位版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-size: 18px; background-color: #f0f4f8; color: #111; }
@@ -15,31 +15,25 @@
     <!-- 頂部標題列 -->
     <header class="bg-blue-600 text-white p-4 text-center shadow-md">
         <h1 class="text-3xl font-black">🚌 老友記巴士站</h1>
-        <p class="text-sm mt-1">一鍵定位 · 尋找附近最近車站</p>
+        <p class="text-sm mt-1">簡潔大字版 · 路線隨身定位</p>
     </header>
 
     <!-- 主體內容區 -->
     <main class="container mx-auto p-4 max-w-md flex-grow">
 
-        <!-- 🌟 核心新功能：一鍵定位最近 5 個站 -->
-        <div class="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-4 shadow-lg mb-6 text-white text-center">
-            <h2 class="text-2xl font-black mb-2">📍 我喺邊度？</h2>
-            <p class="text-sm mb-4">按呢個掣，自動搵出你附近最近嘅 5 個巴士站！</p>
-            <button onclick="findNearbyStops()" class="w-full bg-white text-emerald-800 py-4 rounded-xl text-2xl font-black shadow active:bg-gray-100">
-                🔍 尋找附近最近車站
-            </button>
-        </div>
-
         <!-- 常用線路快捷按鈕 -->
         <div class="bg-white rounded-2xl p-4 shadow mb-6">
-            <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 輸入或選擇巴士線</h2>
+            <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 常用巴士線</h2>
             <div class="grid grid-cols-3 gap-3 mb-3">
                 <button onclick="handleRouteSelect('1A')" class="btn-large bg-blue-500 text-white rounded-xl shadow">1A</button>
                 <button onclick="handleRouteSelect('6')" class="btn-large bg-blue-500 text-white rounded-xl shadow">6</button>
                 <button onclick="handleRouteSelect('27')" class="btn-large bg-blue-500 text-white rounded-xl shadow">27</button>
+                <button onclick="handleRouteSelect('213X')" class="btn-large bg-blue-500 text-white rounded-xl shadow">213X</button>
+                <button onclick="handleRouteSelect('14')" class="btn-large bg-blue-500 text-white rounded-xl shadow">14</button>
+                <button onclick="handleRouteSelect('6D')" class="btn-large bg-blue-500 text-white rounded-xl shadow">6D</button>
             </div>
             <div class="flex gap-2">
-                <input type="text" id="customRouteInput" placeholder="例如: 213X" class="border-2 border-gray-300 rounded-xl p-3 text-xl w-full uppercase text-center font-bold">
+                <input type="text" id="customRouteInput" placeholder="例如: 27" class="border-2 border-gray-300 rounded-xl p-3 text-xl w-full uppercase text-center font-bold">
                 <button onclick="searchCustomRoute()" class="bg-green-600 text-white px-5 rounded-xl text-lg font-bold shadow">查詢</button>
             </div>
         </div>
@@ -47,15 +41,18 @@
         <!-- 結果顯示區 -->
         <div id="resultBox" class="bg-white rounded-2xl p-5 shadow hidden">
             <div class="flex justify-between items-center mb-3">
-                <h2 id="boxTitle" class="text-xl font-black text-blue-800">搜尋結果</h2>
+                <h2 id="boxTitle" class="text-xl font-black text-blue-800">路線資訊</h2>
                 <button onclick="clearResult()" class="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg font-bold">關閉</button>
             </div>
 
-            <!-- 方向切換按鈕區 (查線路時用) -->
-            <div id="directionSelector" class="grid grid-cols-2 gap-2 mb-4"></div>
+            <!-- 方向切換按鈕區 (去程 / 回程) -->
+            <div id="directionSelector" class="grid grid-cols-2 gap-2 mb-3"></div>
+
+            <!-- 🌟 新增：在當前路線中「尋找我附近最近 3 個站」嘅專屬按鈕 -->
+            <div id="nearbyRouteBtnContainer" class="mb-4"></div>
 
             <!-- 站點與 ETA 列表 -->
-            <div id="boxContent" class="space-y-3 max-h-[500px] overflow-y-auto pr-1"></div>
+            <div id="boxContent" class="space-y-3 max-h-[450px] overflow-y-auto pr-1"></div>
         </div>
 
     </main>
@@ -67,6 +64,10 @@
 
     <!-- JavaScript 邏輯 -->
     <script>
+        let currentRoute = '';
+        let currentDirection = 'outbound';
+        let cachedRouteStops = []; // 儲存當前路線的所有站點資料，方便隨時按距離排序
+
         function clearResult() {
             document.getElementById('resultBox').classList.add('hidden');
         }
@@ -74,166 +75,67 @@
         function handleRouteSelect(routeStr) {
             const clean = routeStr.trim().toUpperCase();
             document.getElementById('customRouteInput').value = clean;
-            showDirectionSelector(clean);
+            setupRouteView(clean);
         }
 
         function searchCustomRoute() {
             const val = document.getElementById('customRouteInput').value.trim().toUpperCase();
             if(!val) { alert('請先輸入線號！'); return; }
-            showDirectionSelector(val);
+            setupRouteView(val);
         }
 
-        // --- 核心新功能：GPS 定位與尋找最近 5 個站 ---
-        async function findNearbyStops() {
+        function setupRouteView(route) {
+            currentRoute = route;
             const box = document.getElementById('resultBox');
             const title = document.getElementById('boxTitle');
             const dirSelector = document.getElementById('directionSelector');
-            const content = document.getElementById('boxContent');
-
-            box.classList.remove('hidden');
-            title.innerText = "📍 附近最近的 5 個車站";
-            dirSelector.innerHTML = ""; // 定位不需要方向切換掣
-            content.innerHTML = `<p class="text-blue-600 text-center py-6 font-bold text-xl">🛰️ 正在取得您的 GPS 位置，請允許權限...</p>`;
-
-            if (!navigator.geolocation) {
-                content.innerHTML = `<p class="text-red-600 font-bold text-center">❌ 您的瀏覽器不支援定位功能。</p>`;
-                return;
-            }
-
-            navigator.geolocation.getCurrentPosition(async (position) => {
-                const userLat = position.coords.latitude;
-                const userLon = position.coords.longitude;
-
-                content.innerHTML = `<p class="text-blue-600 text-center py-6 font-bold">⏳ 定位成功！正在全香港九巴站點中計算最近距離...</p>`;
-
-                try {
-                    // 抓取九巴所有站點資料
-                    const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop`);
-                    const json = await res.json();
-
-                    if (!json.data || json.data.length === 0) {
-                        throw new Error('無法取得站點資料');
-                    }
-
-                    // 計算每一個站與用戶的距離
-                    const stopsWithDistance = json.data.map(stop => {
-                        const dist = getDistanceFromLatLonInKm(userLat, userLon, parseFloat(stop.lat), parseFloat(stop.long));
-                        return { ...stop, distance: dist };
-                    });
-
-                    // 按距離由近到遠排序，取頭 5 個
-                    stopsWithDistance.sort((a, b) => a.distance - b.distance);
-                    const nearestStops = stopsWithDistance.slice(0, 5);
-
-                    content.innerHTML = `<p class="text-green-600 font-bold mb-2">✅ 找到您附近最近的 5 個車站：</p>`;
-
-                    // 顯示這 5 個站的即時 ETA
-                    for (let i = 0; i < nearestStops.length; i++) {
-                        const stop = nearestStops[i];
-                        const stopId = stop.stop;
-                        const stopName = stop.name_tc;
-                        const distanceMeters = Math.round(stop.distance * 1000); // 轉為公尺
-                        const cardId = `nearby-card-${stopId}-${i}`;
-
-                        content.innerHTML += `
-                            <div id="${cardId}" class="bg-blue-50 p-4 rounded-xl border-2 border-blue-200 shadow-sm">
-                                <div class="flex justify-between items-center">
-                                    <span class="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-0.5 rounded">最近第 ${i+1} 站</span>
-                                    <span class="text-sm font-bold text-gray-600">約距 ${distanceMeters} 米</span>
-                                </div>
-                                <div class="text-xl font-black text-gray-900 my-1">${stopName}</div>
-                                <div class="text-lg font-bold text-red-600 bg-white p-2 rounded-lg text-center border border-red-100">
-                                    ⏱️ 正在讀取到站時間...
-                                </div>
-                            </div>
-                        `;
-
-                        fetchStopEtasForNearby(stopId, cardId);
-                    }
-
-                } catch (err) {
-                    console.error(err);
-                    content.innerHTML = `<p class="text-red-600 font-bold text-center py-4">❌ 計算附近車站失敗，請稍後重試。</p>`;
-                }
-
-            }, (error) => {
-                console.error(error);
-                content.innerHTML = `<p class="text-red-600 font-bold text-center py-4">❌ 無法取得您的位置。請確保已在瀏覽器設定中開啟定位權限（Location Permission）。</p>`;
-            }, { timeout: 10000 });
-        }
-
-        // 計算兩點經緯度之間的距離（單位：公里）
-        function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-            const R = 6371; // Radius of the earth in km
-            const dLat = deg2rad(lat2 - lat1);
-            const dLon = deg2rad(lon2 - lon1);
-            const a = 
-                Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c; // Distance in km
-        }
-
-        function deg2rad(deg) {
-            return deg * (Math.PI/180);
-        }
-
-        // 抓取附近某個站的所有巴士 ETA
-        async function fetchStopEtasForNearby(stopId, cardId) {
-            try {
-                const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);
-                const json = await res.json();
-
-                let etaText = '暫無車到';
-                if (json.data && json.data.length > 0) {
-                    // 取前 3 條經過呢個站嘅巴士 ETA
-                    etaText = json.data.slice(0, 3).map(e => {
-                        const route = e.route;
-                        if (!e.eta) return `${route}: 到達中`;
-                        const diff = Math.round((new Date(e.eta) - new Date()) / 60000);
-                        const timeStr = diff <= 0 ? '即將到站' : `${diff}分鐘`;
-                        return `<span class="bg-blue-600 text-white px-1.5 py-0.5 rounded text-sm">${route}</span> ${timeStr}`;
-                    }).join(' | ');
-                }
-
-                const card = document.getElementById(cardId);
-                if (card) {
-                    const etaBox = card.querySelector('.text-lg');
-                    etaBox.innerHTML = `🚌 ${etaText}`;
-                }
-            } catch (e) {
-                const card = document.getElementById(cardId);
-                if (card) {
-                    card.querySelector('.text-lg').innerText = '⏱️ ETA 暫時無法讀取';
-                }
-            }
-        }
-
-        // --- 原有：查線路邏輯 ---
-        function showDirectionSelector(route) {
-            const box = document.getElementById('resultBox');
-            const title = document.getElementById('boxTitle');
-            const dirSelector = document.getElementById('directionSelector');
-            const content = document.getElementById('boxContent');
+            const nearbyBtnContainer = document.getElementById('nearbyRouteBtnContainer');
 
             box.classList.remove('hidden');
             title.innerText = `${route} 號線`;
             
+            // 建立去程 / 回程按鈕
             dirSelector.innerHTML = `
-                <button onclick="loadAllStops('${route}', 'outbound')" class="bg-blue-600 text-white p-3 rounded-xl font-bold text-base shadow text-center">
+                <button onclick="switchDirection('${route}', 'outbound')" id="btn-outbound" class="bg-blue-600 text-white p-3 rounded-xl font-bold text-base shadow text-center">
                     👉 去程
                 </button>
-                <button onclick="loadAllStops('${route}', 'inbound')" class="bg-emerald-600 text-white p-3 rounded-xl font-bold text-base shadow text-center">
+                <button onclick="switchDirection('${route}', 'inbound')" id="btn-inbound" class="bg-gray-300 text-gray-800 p-3 rounded-xl font-bold text-base shadow text-center">
                     👈 回程
                 </button>
             `;
-            loadAllStops(route, 'outbound');
+
+            // 建立「尋找我附近呢條線嘅最近 3 個站」按鈕
+            nearbyBtnContainer.innerHTML = `
+                <button onclick="findNearestStopsForCurrentRoute()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl font-black text-lg shadow-md flex items-center justify-center gap-2">
+                    📍 搵我附近嘅 ${route} 號線最近 3 個站
+                </button>
+            `;
+
+            // 預設載入去程全線
+            switchDirection(route, 'outbound');
         }
 
+        function switchDirection(route, directionStr) {
+            currentDirection = directionStr;
+            
+            // 轉換按鈕顏色以顯示當前選中邊個方向
+            const btnOut = document.getElementById('btn-outbound');
+            const btnIn = document.getElementById('btn-inbound');
+            if(directionStr === 'outbound') {
+                btnOut.className = "bg-blue-600 text-white p-3 rounded-xl font-bold text-base shadow text-center";
+                btnIn.className = "bg-gray-300 text-gray-800 p-3 rounded-xl font-bold text-base shadow text-center";
+            } else {
+                btnOut.className = "bg-gray-300 text-gray-800 p-3 rounded-xl font-bold text-base shadow text-center";
+                btnIn.className = "bg-emerald-600 text-white p-3 rounded-xl font-bold text-base shadow text-center";
+            }
+
+            loadAllStops(route, directionStr);
+        }
+
+        // 載入全線站點
         async function loadAllStops(route, directionStr) {
             const content = document.getElementById('boxContent');
-            content.innerHTML = `<p class="text-blue-600 text-center py-4 font-bold">⏳ 正在讀取車站...</p>`;
+            content.innerHTML = `<p class="text-blue-600 text-center py-4 font-bold">⏳ 正在讀取 ${directionStr === 'outbound' ? '去程' : '回程'} 全線車站...</p>`;
 
             try {
                 const url = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${directionStr}/1`;
@@ -244,11 +146,11 @@
                     throw new Error('此方向暫無站點');
                 }
 
-                const stops = json.data;
-                content.innerHTML = `<p class="text-green-600 font-bold mb-2">✅ 共 ${stops.length} 個車站：</p>`;
+                cachedRouteStops = json.data; // 儲存起來備用
+                content.innerHTML = `<p class="text-green-600 font-bold mb-2">✅ 全線共 ${cachedRouteStops.length} 個車站：</p>`;
 
-                for (let i = 0; i < stops.length; i++) {
-                    const stopId = stops[i].stop;
+                for (let i = 0; i < cachedRouteStops.length; i++) {
+                    const stopId = cachedRouteStops[i].stop;
                     const stopNum = i + 1;
                     const cardId = `stop-card-${route}-${directionStr}-${stopId}-${i}`;
 
@@ -266,6 +168,115 @@
             }
         }
 
+        // 🌟 核心新功能：根據 GPS，從當前路線的站點入面篩選出最近的 3 個站
+        async function findNearestStopsForCurrentRoute() {
+            const content = document.getElementById('boxContent');
+            content.innerHTML = `<p class="text-blue-600 text-center py-6 font-bold text-lg">🛰️ 正在定位並計算您與 ${currentRoute} 號線各站的距離...</p>`;
+
+            if (!navigator.geolocation) {
+                content.innerHTML = `<p class="text-red-600 font-bold text-center">❌ 您的瀏覽器不支援定位功能。</p>`;
+                return;
+            }
+
+            if (cachedRouteStops.length === 0) {
+                content.innerHTML = `<p class="text-red-600 font-bold text-center">❌ 請先等待路線站點載入完成。</p>`;
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const userLat = position.coords.latitude;
+                const userLon = position.coords.longitude;
+
+                try {
+                    // 獲取當前路線所有站點的經緯度與名稱
+                    let stopsWithCoords = [];
+                    for (let item of cachedRouteStops) {
+                        const stopRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${item.stop}`);
+                        const stopJson = await stopRes.json();
+                        if (stopJson && stopJson.data) {
+                            const stop = stopJson.data;
+                            const dist = getDistanceFromLatLonInKm(userLat, userLon, parseFloat(stop.lat), parseFloat(stop.long));
+                            stopsWithCoords.push({
+                                stopId: item.stop,
+                                name: stop.name_tc,
+                                distance: dist
+                            });
+                        }
+                    }
+
+                    // 按距離由近到遠排序，取頭 3 個
+                    stopsWithCoords.sort((a, b) => a.distance - b.distance);
+                    const nearestThree = stopsWithCoords.slice(0, 3);
+
+                    content.innerHTML = `<p class="text-emerald-700 font-bold mb-2">🎯 ${currentRoute} 號線距離您最近的 3 個車站：</p>`;
+
+                    // 顯示這 3 個站並抓取 ETA
+                    for (let i = 0; i < nearestThree.length; i++) {
+                        const s = nearestThree[i];
+                        const distanceMeters = Math.round(s.distance * 1000);
+                        const cardId = `nearest-route-card-${s.stopId}-${i}`;
+
+                        content.innerHTML += `
+                            <div id="${cardId}" class="bg-emerald-50 p-4 rounded-xl border-2 border-emerald-300 shadow-sm mb-2">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs font-bold text-emerald-800 bg-emerald-200 px-2 py-0.5 rounded">最近第 ${i+1} 個站</span>
+                                    <span class="text-sm font-bold text-gray-600">約距 ${distanceMeters} 米</span>
+                                </div>
+                                <div class="text-xl font-black text-gray-900 my-1">${s.name}</div>
+                                <div class="text-lg font-bold text-red-600 bg-white p-2 rounded-lg text-center border border-red-100">
+                                    ⏱️ 正在讀取到站時間...
+                                </div>
+                            </div>
+                        `;
+
+                        fetchStopEtasForRoute(s.stopId, currentRoute, cardId);
+                    }
+
+                } catch (err) {
+                    content.innerHTML = `<p class="text-red-600 font-bold text-center py-4">❌ 計算距離失敗，請稍後重試。</p>`;
+                }
+
+            }, (error) => {
+                content.innerHTML = `<p class="text-red-600 font-bold text-center py-4">❌ 無法取得您的位置，請確認已開啟定位權限。</p>`;
+            }, { timeout: 10000 });
+        }
+
+        // 計算經緯度距離（公里）
+        function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = deg2rad(lat2 - lat1);
+            const dLon = deg2rad(lon2 - lon1);
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+        }
+        function deg2rad(deg) { return deg * (Math.PI/180); }
+
+        // 抓取單個站針對該特定路線的 ETA
+        async function fetchStopEtasForRoute(stopId, route, cardId) {
+            try {
+                const etaRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);
+                const etaJson = await etaRes.json();
+                
+                let etaText = '暫無車到';
+                if (etaJson.data) {
+                    const match = etaJson.data.filter(e => e.route.toUpperCase() === route.toUpperCase());
+                    if (match.length > 0) {
+                        etaText = match.map(e => {
+                            if (!e.eta) return '到達中';
+                            const diff = Math.round((new Date(e.eta) - new Date()) / 60000);
+                            return diff <= 0 ? '即將到站' : `${diff}分鐘`;
+                        }).slice(0, 2).join(' ｜ ');
+                    }
+                }
+
+                const card = document.getElementById(cardId);
+                if (card) {
+                    card.querySelector('.text-lg').innerText = `⏱️ ${etaText}`;
+                }
+            } catch (e) {}
+        }
+
+        // 抓取全線單個站名同 ETA
         async function fetchStopDetails(stopId, route, cardId) {
             try {
                 const stopRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${stopId}`);

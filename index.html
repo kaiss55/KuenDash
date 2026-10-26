@@ -30,7 +30,7 @@
     <!-- 主體內容區 -->
     <main class="container mx-auto p-4 max-w-md flex-grow">
 
-        <!-- 常用線路快捷按鈕 (已包 213X) -->
+        <!-- 常用線路快捷按鈕 -->
         <div class="bg-white rounded-2xl p-4 shadow mb-6">
             <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 常用巴士線</h2>
             <div class="grid grid-cols-3 gap-3">
@@ -70,11 +70,14 @@
 
     <!-- 底部版權 -->
     <footer class="bg-gray-200 text-center py-3 text-sm text-gray-600">
-        香港開放數據 (Data.gov.hk) 實時支援
+        香港開放數據實時支援
     </footer>
 
-    <!-- JavaScript 邏輯 -->
+    <!-- JavaScript 邏輯 (連 CORS Proxy 解決跨域阻擋) -->
     <script>
+        // 使用公用 CORS Proxy 解決 GitHub Pages 跨域問題
+        const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+
         function selectRoute(routeStr) {
             const cleanRoute = routeStr.trim().toUpperCase();
             document.getElementById('customRouteInput').value = cleanRoute;
@@ -94,7 +97,7 @@
             document.getElementById('resultContainer').classList.add('hidden');
         }
 
-        // 1. 取得來回方向（確保轉成大階先 Call API）
+        // 1. 取得來回方向
         async function fetchRouteDirections(route) {
             const container = document.getElementById('resultContainer');
             const dirEl = document.getElementById('directionSelector');
@@ -107,9 +110,8 @@
             listEl.innerHTML = '';
 
             try {
-                // 強制轉大階確保 213X 呢類英文字母正確送出
-                const url = `https://data.etabus.gov.hk/v1/transport/kmb/route/${route}`;
-                const response = await fetch(url);
+                const targetUrl = `https://data.etabus.gov.hk/v1/transport/kmb/route/${route}`;
+                const response = await fetch(PROXY_URL + encodeURIComponent(targetUrl));
                 
                 if (!response.ok) throw new Error('網絡請求失敗');
                 
@@ -135,7 +137,7 @@
 
             } catch (err) {
                 console.error(err);
-                dirEl.innerHTML = `<p class="text-red-500 font-bold text-center py-2">❌ 搵唔到「${route}」，請確定輸入正確嘅九巴號碼（例如 213X、1A）。</p>`;
+                dirEl.innerHTML = `<p class="text-red-500 font-bold text-center py-2">❌ 搵唔到「${route}」，請確定輸入正確嘅九巴號碼（例如 213X、1A、6）。</p>`;
             }
         }
 
@@ -148,7 +150,8 @@
             listEl.innerHTML = `<p class="text-center text-xl text-blue-600 py-4">⏳ 正在讀取「${dest}」方向嘅車站...</p>`;
 
             try {
-                const stopsRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${bound}/${serviceType}`);
+                const stopsTargetUrl = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${bound}/${serviceType}`;
+                const stopsRes = await fetch(PROXY_URL + encodeURIComponent(stopsTargetUrl));
                 const stopsJson = await stopsRes.json();
 
                 if (!stopsJson.data || stopsJson.data.length === 0) {
@@ -158,7 +161,7 @@
                 const stops = stopsJson.data;
                 listEl.innerHTML = '';
 
-                // 展示前 5 個主要站點
+                // 為了老人家看得舒服，展示前 5 個主要站點
                 let count = 0;
                 for (let item of stops) {
                     if (count >= 5) break; 
@@ -168,7 +171,8 @@
                     let stopName = '車站';
                     
                     try {
-                        const stopInfoRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${stopId}`);
+                        const stopInfoUrl = `https://data.etabus.gov.hk/v1/transport/kmb/stop/${stopId}`;
+                        const stopInfoRes = await fetch(PROXY_URL + encodeURIComponent(stopInfoUrl));
                         const stopInfo = await stopInfoRes.json();
                         if (stopInfo && stopInfo.data) {
                             stopName = stopInfo.data.name_tc;
@@ -177,7 +181,8 @@
 
                     let timeStr = '暫無資料';
                     try {
-                        const etaRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);
+                        const etaUrl = `https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`;
+                        const etaRes = await fetch(PROXY_URL + encodeURIComponent(etaUrl));
                         const etaData = await etaRes.json();
                         
                         if (etaData && etaData.data) {

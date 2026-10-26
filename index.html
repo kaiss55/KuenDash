@@ -123,148 +123,143 @@
     <!-- 結果顯示區域 -->
     <div id="resultArea"></div>
 
-<script>
-    // 全局暫存，用來儲存巴士站 ID 對應的中文名稱
-    let stopNameMap = {};
+    <script>
+        // 全局暫存，用來儲存巴士站 ID 對應的中文名稱
+        let stopNameMap = {};
 
-    // 主程式：查詢巴士
-    async function searchBus() {
-        const route = document.getElementById('routeInput').value.trim().toUpperCase();
-        if (!route) {
-            alert('請先輸入巴士號碼！');
-            return;
-        }
-
-        const loading = document.getElementById('loadingStatus');
-        const resultArea = document.getElementById('resultArea');
-        
-        loading.style.display = 'block';
-        resultArea.innerHTML = '';
-
-        try {
-            // 【修正】改為正確的九巴官方開放數據 API 網址格式
-            // 1. 同時獲取去程與回程的車站線路靜態資料 (Service Type 預設為 1)
-            const [outboundRes, inboundRes] = await Promise.all([
-                fetch(`https://etabus.gov.hk{route}/outbound/1`).then(res => res.json()),
-                fetch(`https://etabus.gov.hk{route}/inbound/1`).then(res => res.json())
-            ]);
-
-            if ((!outboundRes.data || outboundRes.data.length === 0) && (!inboundRes.data || inboundRes.data.length === 0)) {
-                loading.style.display = 'none';
-                resultArea.innerHTML = `<div style="text-align:center; font-size:24px; color:red; font-weight:bold;">找不到這條巴士線 (${route})，請檢查輸入是否正確。</div>`;
+        // 主程式：查詢巴士
+        async function searchBus() {
+            const route = document.getElementById('routeInput').value.trim().toUpperCase();
+            if (!route) {
+                alert('請先輸入巴士號碼！');
                 return;
             }
 
-            // 2. 獲取整條線所有車站的實時 ETA 數據
-            const etaRes = await fetch(`https://etabus.gov.hk{route}/1`).then(res => res.json());
-            const etaData = etaRes.data || [];
-
-            // 3. 處理並分開去程 (O) 與回程 (I) 的車站與時間
-            let htmlContent = '';
+            const loading = document.getElementById('loadingStatus');
+            const resultArea = document.getElementById('resultArea');
             
-            if (outboundRes.data && outboundRes.data.length > 0) {
-                htmlContent += await buildDirectionDOM(route, "去程", outboundRes.data, etaData.filter(e => e.dir === 'O'));
-            }
-            
-            if (inboundRes.data && inboundRes.data.length > 0) {
-                htmlContent += await buildDirectionDOM(route, "回程", inboundRes.data, etaData.filter(e => e.dir === 'I'));
-            }
+            loading.style.display = 'block';
+            resultArea.innerHTML = '';
 
-            resultArea.innerHTML = htmlContent;
+            try {
+                // 1. 同時獲取去程與回程的車站線路靜態資料 (Service Type 預設為 1)
+                const [outboundRes, inboundRes] = await Promise.all([
+                    fetch(`https://etabus.gov.hk{route}/outbound/1`).then(res => res.json()),
+                    fetch(`https://etabus.gov.hk{route}/inbound/1`).then(res => res.json())
+                ]);
 
-        } catch (error) {
-            console.error(error);
-            resultArea.innerHTML = `<div style="text-align:center; font-size:22px; color:red;">網絡錯誤或 API 故障，請重試。</div>`;
-        } finally {
-            loading.style.display = 'none';
-        }
-    }
-
-    // 獲取單個巴士站的名稱（帶有本地暫存機制，避免重複查同一個站）
-    async function getStopName(stopId) {
-        if (stopNameMap[stopId]) {
-            return stopNameMap[stopId];
-        }
-        try {
-            // 【修正】改為正確的九巴巴士站資訊 API 網址格式
-            const res = await fetch(`https://etabus.gov.hk{stopId}`).then(res => res.json());
-            if (res.data && res.data.name_tc) {
-                stopNameMap[stopId] = res.data.name_tc;
-                return res.data.name_tc;
-            }
-        } catch (e) {
-            console.error(e);
-        }
-        return "未知巴士站";
-    }
-
-    // 計算實時剩餘時間（分鐘）
-    function calculateRemainingMinutes(etaString) {
-        if (!etaString) return null;
-        const now = new Date();
-        const etaTime = new Date(etaString);
-        const diffMs = etaTime - now;
-        const diffMins = Math.ceil(diffMs / 1000 / 60);
-        return diffMins <= 0 ? "即將到站" : `${diffMins} 分鐘`;
-    }
-
-    // 建立單一方向的 HTML 介面
-    async function buildDirectionDOM(routeNum, dirLabel, routeStops, etaList) {
-        // 找出該方向的目的地名稱
-        let destName = dirLabel === "去程" ? "指定目的地" : "起點站";
-        if (etaList.length > 0 && etaList[0].dest_tc) {
-            destName = etaList[0].dest_tc;
-        }
-
-        let html = `
-            <div class="direction-section">
-                <div class="direction-title">${routeNum} 號線 ➡️ 往 ${destName} (${dirLabel})</div>
-                <ul class="stop-list">
-        `;
-
-        // 依序抓出路線中的所有巴士站
-        for (const item of routeStops) {
-            const stopId = item.stop;
-            const stopName = await getStopName(stopId);
-
-            // 篩選出這個巴士站的 ETA 紀錄（按時間排序，並確保同一個 seq 順序對應）
-            // 注意：API 返回的數據中包含多個班次，我們用 seq（站序）來配對最準確
-            const stopEtas = etaList
-                .filter(e => e.seq === item.seq && e.eta)
-                .sort((a, b) => new Date(a.eta) - new Date(b.eta));
-
-            let etaDisplay = `<span class="no-bus">暫無班次</span>`;
-            let nextBusDisplay = '';
-
-            if (stopEtas.length > 0) {
-                const firstBusMins = calculateRemainingMinutes(stopEtas[0].eta);
-                if (firstBusMins) {
-                    etaDisplay = `<span class="eta-box">${firstBusMins}</span>`;
+                if ((!outboundRes.data || outboundRes.data.length === 0) && (!inboundRes.data || inboundRes.data.length === 0)) {
+                    loading.style.display = 'none';
+                    resultArea.innerHTML = `<div style="text-align:center; font-size:24px; color:red; font-weight:bold;">找不到這條巴士線 (${route})，請檢查輸入是否正確。</div>`;
+                    return;
                 }
+
+                // 2. 獲取整條線所有車站的實時 ETA 數據
+                const etaRes = await fetch(`https://etabus.gov.hk{route}/1`).then(res => res.json());
+                const etaData = etaRes.data || [];
+
+                // 3. 處理並分開去程 (O) 與回程 (I) 的車站與時間
+                let htmlContent = '';
                 
-                // 如果有下一班車，順便列出
-                if (stopEtas.length > 1) {
-                    const secondBusMins = calculateRemainingMinutes(stopEtas[1].eta);
-                    if (secondBusMins) {
-                        nextBusDisplay = `<span class="eta-next">下班: ${secondBusMins}</span>`;
+                if (outboundRes.data && outboundRes.data.length > 0) {
+                    htmlContent += await buildDirectionDOM(route, "去程", outboundRes.data, etaData.filter(e => e.dir === 'O'));
+                }
+                if (inboundRes.data && inboundRes.data.length > 0) {
+                    htmlContent += await buildDirectionDOM(route, "回程", inboundRes.data, etaData.filter(e => e.dir === 'I'));
+                }
+
+                resultArea.innerHTML = htmlContent;
+
+            } catch (error) {
+                console.error(error);
+                resultArea.innerHTML = `<div style="text-align:center; font-size:22px; color:red;">網絡錯誤或 API 故障，請重試。</div>`;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // 獲取單個巴士站的名稱（帶有本地暫存機制，避免重複查同一個站）
+        async function getStopName(stopId) {
+            if (stopNameMap[stopId]) {
+                return stopNameMap[stopId];
+            }
+            try {
+                const res = await fetch(`https://etabus.gov.hk{stopId}`).then(res => res.json());
+                if (res.data && res.data.name_tc) {
+                    stopNameMap[stopId] = res.data.name_tc;
+                    return res.data.name_tc;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+            return "未知巴士站";
+        }
+
+        // 計算實時剩餘時間（分鐘）
+        function calculateRemainingMinutes(etaString) {
+            if (!etaString) return null;
+            const now = new Date();
+            const etaTime = new Date(etaString);
+            const diffMs = etaTime - now;
+            const diffMins = Math.ceil(diffMs / 1000 / 60);
+            return diffMins <= 0 ? "即將到站" : `${diffMins} 分鐘`;
+        }
+
+        // 建立單一方向的 HTML 介面
+        async function buildDirectionDOM(routeNum, dirLabel, routeStops, etaList) {
+            // 找出該方向的目的地名稱
+            let destName = dirLabel === "去程" ? "指定目的地" : "起點站";
+            if (etaList.length > 0 && etaList[0].dest_tc) {
+                destName = etaList[0].dest_tc;
+            }
+
+            let html = `
+                <div class="direction-section">
+                    <div class="direction-title">${routeNum} 號線 ➡️ 往 ${destName} (${dirLabel})</div>
+                    <ul class="stop-list">
+            `;
+
+            // 依序抓出路線中的所有巴士站
+            for (const item of routeStops) {
+                const stopId = item.stop;
+                const stopName = await getStopName(stopId);
+
+                // 篩選出這個巴士站的 ETA 紀錄（按時間排序）
+                const stopEtas = etaList
+                    .filter(e => e.stop === stopId && e.eta)
+                    .sort((a, b) => new Date(a.eta) - new Date(b.eta));
+
+                let etaDisplay = `<span class="no-bus">暫無班次</span>`;
+                let nextBusDisplay = '';
+
+                if (stopEtas.length > 0) {
+                    const firstBusMins = calculateRemainingMinutes(stopEtas[0].eta);
+                    if (firstBusMins) {
+                        etaDisplay = `<span class="eta-box">${firstBusMins}</span>`;
+                    }
+                    // 如果有下一班車，順便列出
+                    if (stopEtas.length > 1) {
+                        const secondBusMins = calculateRemainingMinutes(stopEtas[1].eta);
+                        if (secondBusMins) {
+                            nextBusDisplay = `<span class="eta-next">下班: ${secondBusMins}</span>`;
+                        }
                     }
                 }
+
+                html += `
+                    <li class="stop-item">
+                        <div class="stop-name">${item.seq}. ${stopName}</div>
+                        <div class="eta-container">
+                            ${etaDisplay}
+                            ${nextBusDisplay}
+                        </div>
+                    </li>
+                `;
             }
 
-            html += `
-                <li class="stop-item">
-                    <div class="stop-name">${item.seq}. ${stopName}</div>
-                    <div class="eta-container">
-                        ${etaDisplay}
-                        ${nextBusDisplay}
-                    </div>
-                </li>
-            `;
+            html += `</ul></div>`;
+            return html;
         }
-
-        html += `</ul></div>`;
-        return html;
-    }
-</script>
+    </script>
 </body>
 </html>

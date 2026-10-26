@@ -2,32 +2,96 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <title>JSON 結構偵測版</title>
+    <title>老友記巴士站 - 最終修復測試版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-size: 18px; background-color: #f0f4f8; color: #111; }
+        .btn-large { min-height: 70px; font-size: 1.5rem; font-weight: bold; }
+    </style>
 </head>
-<body style="font-size: 20px; padding: 20px;">
-    <h1>🧪 27 號 API 結構偵測</h1>
-    
-    <button onclick="test27()" style="padding: 20px; font-size: 22px; background: lightgreen;">
-        點擊測試 27 號 API
-    </button>
+<body class="min-h-screen flex flex-col justify-between">
 
-    <pre id="log" style="margin-top: 20px; background: #eee; padding: 15px; font-size: 16px; white-space: pre-wrap;"></pre>
+    <header class="bg-blue-600 text-white p-4 text-center shadow-md">
+        <h1 class="text-3xl font-black">🚌 老友記巴士站</h1>
+        <p class="text-sm mt-1">極速直達版</p>
+    </header>
+
+    <main class="container mx-auto p-4 max-w-md flex-grow">
+        <div class="bg-white rounded-2xl p-4 shadow mb-6">
+            <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 測試熱門線路</h2>
+            <div class="grid grid-cols-3 gap-3">
+                <button onclick="loadRouteDirect('1A')" class="btn-large bg-blue-500 text-white rounded-xl shadow">1A</button>
+                <button onclick="loadRouteDirect('6')" class="btn-large bg-blue-500 text-white rounded-xl shadow">6</button>
+                <button onclick="loadRouteDirect('27')" class="btn-large bg-blue-500 text-white rounded-xl shadow">27</button>
+            </div>
+        </div>
+
+        <div id="resultBox" class="bg-white rounded-2xl p-5 shadow hidden">
+            <h2 id="boxTitle" class="text-xl font-bold text-blue-800 mb-3">路線資訊</h2>
+            <div id="boxContent" class="space-y-3">載入中...</div>
+        </div>
+    </main>
 
     <script>
-        async function test27() {
-            const logDiv = document.getElementById('log');
-            logDiv.innerText = "正在連線 27 號 API...\n";
-            
+        // 針對常見路線直接對應其正確的 bound 與 service_type，繞過易出事的 route 查詢
+        async function loadRouteDirect(route) {
+            const box = document.getElementById('resultBox');
+            const title = document.getElementById('boxTitle');
+            const content = document.getElementById('boxContent');
+
+            box.classList.remove('hidden');
+            title.innerText = `${route} 號線站點`;
+            content.innerHTML = `<p class="text-blue-600">正在讀取車站...</p>`;
+
             try {
-                const url = "https://data.etabus.gov.hk/v1/transport/kmb/route/27";
+                // 九巴大部分常規路線去程都是 outbound, service_type 1
+                let direction = 'outbound';
+                let serviceType = '1';
+
+                const url = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${direction}/${serviceType}`;
                 const res = await fetch(url);
                 const json = await res.json();
-                
-                // 直接將整個 JSON 印出嚟，睇下裏面究竟有咩結構
-                logDiv.innerText += "API 完整回傳內容：\n" + JSON.stringify(json, null, 2);
-                
+
+                if (!json.data || json.data.length === 0) {
+                    throw new Error('找不到站點資料');
+                }
+
+                content.innerHTML = `<p class="text-green-600 font-bold">✅ 成功取得站點！顯示頭 5 個站：</p>`;
+
+                for (let i = 0; i < Math.min(5, json.data.length); i++) {
+                    const stopId = json.data[i].stop;
+                    
+                    // 拎站名
+                    const stopRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${stopId}`);
+                    const stopJson = await stopRes.json();
+                    const stopName = stopJson.data ? stopJson.data.name_tc : stopId;
+
+                    // 拎 ETA
+                    const etaRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);
+                    const etaJson = await etaRes.json();
+                    
+                    let etaText = '暫無資料';
+                    if (etaJson.data) {
+                        const match = etaJson.data.filter(e => e.route.toUpperCase() === route.toUpperCase());
+                        if (match.length > 0) {
+                            etaText = match.map(e => {
+                                if (!e.eta) return '到達中';
+                                const diff = Math.round((new Date(e.eta) - new Date()) / 60000);
+                                return diff <= 0 ? '即將到站' : `${diff}分鐘`;
+                            }).slice(0, 2).join(' ｜ ');
+                        }
+                    }
+
+                    content.innerHTML += `
+                        <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                            <div class="font-bold text-gray-800">${stopName}</div>
+                            <div class="text-red-600 font-black">⏱️ ${etaText}</div>
+                        </div>
+                    `;
+                }
+
             } catch (err) {
-                logDiv.innerText += "\n[錯誤]: " + err.message;
+                content.innerHTML = `<p class="text-red-600 font-bold">❌ 錯誤: ${err.message}</p>`;
             }
         }
     </script>

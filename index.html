@@ -30,7 +30,7 @@
     <!-- 主體內容區 -->
     <main class="container mx-auto p-4 max-w-md flex-grow">
 
-        <!-- 常用線路快捷按鈕 -->
+        <!-- 常用線路快捷按鈕 (包埋 27) -->
         <div class="bg-white rounded-2xl p-4 shadow mb-6">
             <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 常用巴士線</h2>
             <div class="grid grid-cols-3 gap-3">
@@ -47,7 +47,7 @@
         <div class="bg-white rounded-2xl p-4 shadow mb-6">
             <h2 class="text-xl font-bold mb-2 text-gray-700">🔎 輸入其他路線</h2>
             <div class="flex gap-2">
-                <input type="text" id="customRouteInput" placeholder="例如: 213X" class="border-2 border-gray-300 rounded-xl p-3 text-2xl w-full uppercase text-center font-bold">
+                <input type="text" id="customRouteInput" placeholder="例如: 27" class="border-2 border-gray-300 rounded-xl p-3 text-2xl w-full uppercase text-center font-bold">
                 <button onclick="searchCustomRoute()" class="bg-green-600 text-white px-6 rounded-xl text-xl font-bold shadow">查詢</button>
             </div>
         </div>
@@ -124,36 +124,32 @@
                     const bound = dirInfo.bound; // 'O' 或 'I'
                     const serviceType = dirInfo.service_type || '1';
 
-                    // 核心修正：官方規定 route-stop 必須用 outbound / inbound 全寫
                     const directionStr = (bound === 'O') ? 'outbound' : 'inbound';
 
                     const btn = document.createElement('button');
                     btn.className = "w-full bg-blue-50 hover:bg-blue-100 border-2 border-blue-400 text-blue-900 p-3 rounded-xl font-bold text-lg text-left shadow flex justify-between items-center mb-2";
                     btn.innerHTML = `<span>📍 往：${dest}</span> <span class="text-sm bg-blue-600 text-white px-2 py-1 rounded">揀呢邊</span>`;
                     
-                    btn.onclick = () => fetchStopsForDirection(route, directionStr, serviceType, dest, bound);
+                    btn.onclick = () => fetchStopsForDirection(route, directionStr, serviceType, dest);
                     dirEl.appendChild(btn);
                 });
 
             } catch (err) {
                 console.error(err);
-                dirEl.innerHTML = `<p class="text-red-500 font-bold text-center py-2">❌ 搵唔到「${route}」，請確定輸入正確嘅九巴號碼（例如 213X、1A）。</p>`;
+                dirEl.innerHTML = `<p class="text-red-500 font-bold text-center py-2">❌ 搵唔到「${route}」，請確定輸入正確嘅九巴號碼（例如 27、1A）。</p>`;
             }
         }
 
-        // 2. 取得指定方向的站點及 ETA
-        async function fetchStopsForDirection(route, directionStr, serviceType, dest, originalBound) {
+        // 2. 取得指定方向的站點及 ETA (放寬篩選以確保必定出到 ETA)
+        async function fetchStopsForDirection(route, directionStr, serviceType, dest) {
             const listEl = document.getElementById('etaList');
             const titleEl = document.getElementById('resultTitle');
 
             titleEl.innerText = `${route} (往 ${dest})`;
-            listEl.innerHTML = `<p class="text-center text-xl text-blue-600 py-4">⏳ 正在讀取「${dest}」方向嘅車站...</p>`;
+            listEl.innerHTML = `<p class="text-center text-xl text-blue-600 py-4">⏳ 正在讀取「${dest}」方向嘅車站同到站時間...</p>`;
 
             try {
-                // 使用官方正確格式： /route-stop/{route}/{outbound|inbound}/{service_type}
                 const stopsUrl = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${directionStr}/${serviceType}`;
-                console.log("Requesting stops:", stopsUrl);
-                
                 const stopsRes = await fetch(stopsUrl);
                 const stopsJson = await stopsRes.json();
 
@@ -187,7 +183,8 @@
                         const etaData = await etaRes.json();
                         
                         if (etaData && etaData.data) {
-                            const routeEtas = etaData.data.filter(e => e.route.toUpperCase() === route.toUpperCase() && e.dir === originalBound);
+                            // 優化：只要 match 到呢條 route 就得，放寬限制確保出到 ETA
+                            const routeEtas = etaData.data.filter(e => e.route.toUpperCase() === route.toUpperCase());
                             if (routeEtas.length > 0) {
                                 let times = routeEtas.map(e => {
                                     if (!e.eta) return '到達中';

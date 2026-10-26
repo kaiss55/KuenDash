@@ -4,10 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>老人家老友記巴士板</title>
-    <!-- 引入 Tailwind CSS 令畫面整齊美觀 -->
+    <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 針對老人家放大預設字體 */
         body {
             font-size: 18px;
             background-color: #f0f4f8;
@@ -31,7 +30,7 @@
     <!-- 主體內容區 -->
     <main class="container mx-auto p-4 max-w-md flex-grow">
 
-        <!-- 常用線路快捷按鈕 (九龍熱門線路示範，可自行加減) -->
+        <!-- 常用線路快捷按鈕 (九龍熱門線路) -->
         <div class="bg-white rounded-2xl p-4 shadow mb-6">
             <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 常用巴士線</h2>
             <div class="grid grid-cols-3 gap-3">
@@ -56,11 +55,10 @@
         <!-- 到站結果顯示區 -->
         <div id="resultContainer" class="bg-white rounded-2xl p-5 shadow hidden">
             <div class="flex justify-between items-center mb-4">
-                <h2 id="resultTitle" class="text-2xl font-black text-blue-800">路線資訊</h2>
+                <h2 id="resultTitle" class="text-xl font-black text-blue-800">路線資訊</h2>
                 <button onclick="clearResult()" class="bg-gray-200 text-gray-700 px-3 py-1 rounded-lg font-bold">關閉</button>
             </div>
             <div id="etaList" class="space-y-4">
-                <!-- 動態載入站點與 ETA -->
                 <p class="text-center text-gray-500">載入中...</p>
             </div>
         </div>
@@ -72,12 +70,9 @@
         香港開放數據 (Data.gov.hk) 實時支援
     </footer>
 
-    <!-- JavaScript 邏輯：對接九巴 Open API -->
+    <!-- JavaScript 邏輯：修復後的九巴 Open API -->
     <script>
-        const KMB_API_BASE = 'https://etabus.gov.v1/transport/kmb'; // 實際會透過公開 API 獲取
-
-        // 點擊常用線路
-        async function selectRoute(routeStr) {
+        function selectRoute(routeStr) {
             document.getElementById('customRouteInput').value = routeStr;
             fetchRouteData(routeStr);
         }
@@ -95,7 +90,6 @@
             document.getElementById('resultContainer').classList.add('hidden');
         }
 
-        // 核心：取得九巴路線、站點與 ETA
         async function fetchRouteData(route) {
             const container = document.getElementById('resultContainer');
             const listEl = document.getElementById('etaList');
@@ -106,28 +100,48 @@
             listEl.innerHTML = `<p class="text-center text-xl text-blue-600 py-4">正在連線取得最貼地資料...</p>`;
 
             try {
-                // 1. 拎該路線的方向資料 (Direction)
-                const resRoute = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route/${route}/1`);
-                const routeData = await resRoute.json();
+                // 1. 修正：正確的九巴 API Domain (data.etabus.gov.hk)
+                const resRoute = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route/${route}/1/1`);
+                let routeJson = await resRoute.json();
                 
-                if (!routeData || !routeData.data) {
-                    throw new Error('找不到此路線');
+                // 有些路線的 service_type 可能不是 1，或方向不同，這裡做個防禦性處理
+                if (!routeJson || !routeJson.data) {
+                    // 嘗試只用 route 查所有方向
+                    const resRouteFallback = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route/${route}`);
+                    const fallbackJson = await resRouteFallback.json();
+                    if (fallbackJson && fallbackJson.data && fallbackJson.data.length > 0) {
+                        routeJson = { data: fallbackJson.data[0] };
+                    } else {
+                        throw new Error('找不到此路線');
+                    }
                 }
 
-                titleEl.innerText = `${route} 號線 (往: ${routeData.data.dest_tc || '總站'})`;
+                const routeInfo = Array.isArray(routeJson.data) ? routeJson.data[0] : routeJson.data;
+                const dest = routeInfo.dest_tc || '總站';
+                const orig = routeInfo.orig_tc || '起點';
+                titleEl.innerText = `${route} (往 ${dest})`;
 
-                // 2. 拎呢個方向嘅所有站點 ID (Route-Stop)
-                const resStops = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/1/1`);
-                const stopsData = await resStops.json();
-                const stops = stopsData.data; // 呢個係陣列，包住stop_id
+                // 2. 拎呢個方向嘅所有站點 ID (預設方向 1)
+                let stopsRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/1/1`);
+                let stopsJson = await stopsRes.json();
+                
+                if (!stopsJson.data || stopsJson.data.length === 0) {
+                    // 試 service_type 2 或方向 2
+                    stopsRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/2/1`);
+                    stopsJson = await stopsRes.json();
+                }
 
+                if (!stopsJson.data || stopsJson.data.length === 0) {
+                    throw new Error('找不到此路線的站點資料');
+                }
+
+                const stops = stopsJson.data;
                 listEl.innerHTML = '';
 
-                // 為了展示簡單，我們抽頭先頭 5 個站示範（老人家通常只睇附近或總站頭幾個站，或者可以整合定位）
-                // 實際生產可以配合 Stop ID 抓取 ETA
+                // 為了照顧老人家，先顯示頭 5 個主要站點示範
                 let count = 0;
                 for (let item of stops) {
-                    if (count >= 6) break; // 限制顯示前幾個站，避免資訊太多
+                    if (count >= 5) break; 
                     count++;
 
                     const stopId = item.stop;
@@ -135,27 +149,27 @@
                     // 拎站名
                     const stopInfoRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${stopId}`);
                     const stopInfo = await stopInfoRes.json();
-                    const stopName = stopInfo.data.name_tc;
+                    const stopName = stopInfo.data ? stopInfo.data.name_tc : '未知站名';
 
                     // 拎該站嘅 ETA
                     const etaRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);
                     const etaData = await etaRes.json();
                     
                     // 篩選出屬於呢條 route 嘅 ETA
-                    const routeEtas = etaData.data.filter(e => e.route === route);
-
-                    let timeStr = '暫無資料';
-                    if (routeEtas.length > 0) {
-                        // 執出最近兩班車
-                        let times = routeEtas.map(e => {
-                            if (!e.eta) return '到達中';
-                            const diffMin = Math.round((new Date(e.eta) - new Date()) / 60000);
-                            return diffMin <= 0 ? '即將到站' : `${diffMin}分鐘`;
-                        });
-                        timeStr = times.slice(0, 2).join(' ｜ ');
+                    let timeStr = '暫無班次資料';
+                    if (etaData && etaData.data) {
+                        const routeEtas = etaData.data.filter(e => e.route.toUpperCase() === route.toUpperCase());
+                        if (routeEtas.length > 0) {
+                            let times = routeEtas.map(e => {
+                                if (!e.eta) return '到達中';
+                                const diffMin = Math.round((new Date(e.eta) - new Date()) / 60000);
+                                return diffMin <= 0 ? '即將到站' : `${diffMin}分鐘`;
+                            });
+                            timeStr = times.slice(0, 2).join(' ｜ ');
+                        }
                     }
 
-                    // 組合 HTML 呈現大字卡片
+                    // 組合大字卡片
                     const card = `
                         <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 shadow-sm">
                             <div class="text-sm font-bold text-gray-500">站點 ${count}</div>
@@ -170,7 +184,7 @@
 
             } catch (error) {
                 console.error(error);
-                listEl.innerHTML = `<p class="text-center text-red-500 text-xl py-4">查詢失敗，請檢查線號或稍後重試。</p>`;
+                listEl.innerHTML = `<p class="text-center text-red-500 text-xl py-4">查詢失敗，請檢查線號（確保為正確九巴編號）。</p>`;
             }
         }
     </script>

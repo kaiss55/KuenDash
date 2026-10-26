@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>老友記巴士站 - 簡潔大字版</title>
+    <title>老友記巴士站 - 實用大字版</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -94,7 +94,7 @@
             document.getElementById('resultContainer').classList.add('hidden');
         }
 
-        // 1. 取得來回方向（動態獲取正確嘅 bound 同 service_type）
+        // 1. 取得來回方向
         async function fetchRouteDirections(route) {
             const container = document.getElementById('resultContainer');
             const dirEl = document.getElementById('directionSelector');
@@ -121,16 +121,17 @@
                 
                 json.data.forEach((dirInfo) => {
                     const dest = dirInfo.dest_tc;
-                    const orig = dirInfo.orig_tc;
-                    const bound = dirInfo.bound;             // 官方真實方向 (O 或 I)
-                    const serviceType = dirInfo.service_type; // 官方真實服務型態
+                    const bound = dirInfo.bound; // 'O' 或 'I'
+                    const serviceType = dirInfo.service_type || '1';
+
+                    // 核心修正：官方規定 route-stop 必須用 outbound / inbound 全寫
+                    const directionStr = (bound === 'O') ? 'outbound' : 'inbound';
 
                     const btn = document.createElement('button');
                     btn.className = "w-full bg-blue-50 hover:bg-blue-100 border-2 border-blue-400 text-blue-900 p-3 rounded-xl font-bold text-lg text-left shadow flex justify-between items-center mb-2";
                     btn.innerHTML = `<span>📍 往：${dest}</span> <span class="text-sm bg-blue-600 text-white px-2 py-1 rounded">揀呢邊</span>`;
                     
-                    // 點擊後傳入正確嘅 bound 同 service_type，避免 422 錯誤
-                    btn.onclick = () => fetchStopsForDirection(route, bound, serviceType, dest);
+                    btn.onclick = () => fetchStopsForDirection(route, directionStr, serviceType, dest, bound);
                     dirEl.appendChild(btn);
                 });
 
@@ -141,7 +142,7 @@
         }
 
         // 2. 取得指定方向的站點及 ETA
-        async function fetchStopsForDirection(route, bound, serviceType, dest) {
+        async function fetchStopsForDirection(route, directionStr, serviceType, dest, originalBound) {
             const listEl = document.getElementById('etaList');
             const titleEl = document.getElementById('resultTitle');
 
@@ -149,8 +150,10 @@
             listEl.innerHTML = `<p class="text-center text-xl text-blue-600 py-4">⏳ 正在讀取「${dest}」方向嘅車站...</p>`;
 
             try {
-                // 使用動態 bound 同 service_type 請求站點
-                const stopsUrl = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${bound}/${serviceType}`;
+                // 使用官方正確格式： /route-stop/{route}/{outbound|inbound}/{service_type}
+                const stopsUrl = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${directionStr}/${serviceType}`;
+                console.log("Requesting stops:", stopsUrl);
+                
                 const stopsRes = await fetch(stopsUrl);
                 const stopsJson = await stopsRes.json();
 
@@ -184,7 +187,7 @@
                         const etaData = await etaRes.json();
                         
                         if (etaData && etaData.data) {
-                            const routeEtas = etaData.data.filter(e => e.route.toUpperCase() === route.toUpperCase() && e.dir === bound);
+                            const routeEtas = etaData.data.filter(e => e.route.toUpperCase() === route.toUpperCase() && e.dir === originalBound);
                             if (routeEtas.length > 0) {
                                 let times = routeEtas.map(e => {
                                     if (!e.eta) return '到達中';

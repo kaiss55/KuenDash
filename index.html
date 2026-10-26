@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>老友記巴士站 - 手機專用版</title>
+    <title>出遊巴士路線</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-size: 18px; background-color: #f0f4f8; color: #111; }
@@ -14,8 +14,8 @@
 
     <!-- 頂部標題列 -->
     <header class="bg-blue-600 text-white p-4 text-center shadow-md">
-        <h1 class="text-3xl font-black">🚌 老友記巴士站</h1>
-        <p class="text-sm mt-1">手機專用 · 一撳即轉模式</p>
+        <h1 class="text-3xl font-black">🚌 出遊巴士路線</h1>
+        <!-- <p class="text-sm mt-1">手機專用 · 一撳即轉模式</p> -->
     </header>
 
     <!-- 頂部超大分頁切換掣 -->
@@ -24,7 +24,7 @@
             📑 1. 查指定路線
         </button>
         <button onclick="switchTab(2)" id="tabBtn2" class="py-3 px-2 rounded-xl text-center font-black text-base bg-blue-900 text-white shadow">
-            📍 2. 附近最近 3 站
+            📍 2. 附近最近3個巴士站
         </button>
     </div>
 
@@ -35,16 +35,14 @@
         <div id="section1" class="space-y-4">
             <div class="bg-white rounded-2xl p-4 shadow">
                 <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 選擇常用巴士線</h2>
+                <!-- 已更新為 57M, 61M, 46X -->
                 <div class="grid grid-cols-3 gap-3 mb-3">
-                    <button onclick="handleRouteSelect('1A')" class="btn-large bg-blue-500 text-white rounded-xl shadow">1A</button>
-                    <button onclick="handleRouteSelect('6')" class="btn-large bg-blue-500 text-white rounded-xl shadow">6</button>
-                    <button onclick="handleRouteSelect('27')" class="btn-large bg-blue-500 text-white rounded-xl shadow">27</button>
-                    <button onclick="handleRouteSelect('213X')" class="btn-large bg-blue-500 text-white rounded-xl shadow">213X</button>
-                    <button onclick="handleRouteSelect('14')" class="btn-large bg-blue-500 text-white rounded-xl shadow">14</button>
-                    <button onclick="handleRouteSelect('6D')" class="btn-large bg-blue-500 text-white rounded-xl shadow">6D</button>
+                    <button onclick="handleRouteSelect('57M')" class="btn-large bg-blue-500 text-white rounded-xl shadow">57M</button>
+                    <button onclick="handleRouteSelect('61M')" class="btn-large bg-blue-500 text-white rounded-xl shadow">61M</button>
+                    <button onclick="handleRouteSelect('46X')" class="btn-large bg-blue-500 text-white rounded-xl shadow">46X</button>
                 </div>
                 <div class="flex gap-2">
-                    <input type="text" id="customRouteInput" placeholder="例如: 27" class="border-2 border-gray-300 rounded-xl p-3 text-xl w-full uppercase text-center font-bold">
+                    <input type="text" id="customRouteInput" placeholder="例如: 30" class="border-2 border-gray-300 rounded-xl p-3 text-xl w-full uppercase text-center font-bold">
                     <button onclick="searchCustomRoute()" class="bg-green-600 text-white px-5 rounded-xl text-lg font-bold shadow">查詢</button>
                 </div>
             </div>
@@ -65,7 +63,7 @@
         <div id="section2" class="space-y-4 hidden">
             <div class="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl p-4 shadow-lg text-white text-center">
                 <h2 class="text-2xl font-black mb-2">📍 附近最近車站總覽</h2>
-                <p class="text-sm mb-4">按呢個掣，自動搵出附近最近 3 個站，並顯示全部經過嘅巴士！</p>
+                <p class="text-sm mb-4">按呢個掣，自動搵出附近最近3個站，並顯示經過嘅巴士！</p>
                 <button onclick="findAllNearbyStops()" class="w-full bg-white text-emerald-800 py-4 rounded-xl text-xl font-black shadow active:bg-gray-100">
                     🔍 尋找附近最近 3 個站
                 </button>
@@ -257,7 +255,7 @@
         }
 
 
-        // --- 畫面 2 邏輯 (已加入防重覆與合併處理) ---
+        // --- 畫面 2 邏輯 ---
         async function findAllNearbyStops() {
             const box = document.getElementById('nearbyAllBox');
             box.innerHTML = `<div class="bg-white rounded-2xl p-6 shadow text-center text-blue-600 font-bold text-lg">🛰️ 正在獲取您的 GPS 位置並掃描附近車站...</div>`;
@@ -324,17 +322,15 @@
                     return;
                 }
 
-                // 🌟 防重覆與合併處理 (Dedup & Group by Route)
                 let routeMap = {};
                 
                 json.data.forEach(e => {
                     const route = e.route;
                     const dest = e.dest_tc || '指定方向';
-                    // 用 Route + Dest 做 Key，確保同一條線唔同方向分開，但同方向嘅多個班次合併
                     const key = `${route}-${dest}`; 
 
                     let timeStr = '到達中';
-                    let timeVal = 999; // 用於排序
+                    let timeVal = 999;
                     if (e.eta) {
                         const diff = Math.round((new Date(e.eta) - new Date()) / 60000);
                         timeVal = diff;
@@ -349,12 +345,9 @@
 
                 container.innerHTML = '';
                 
-                // 轉返做 Array 並按最快到站時間排序
                 let uniqueRoutes = Object.values(routeMap);
                 
-                // 限制最多顯示 5 條唔同嘅路線
                 uniqueRoutes.slice(0, 5).forEach(item => {
-                    // 取頭兩班車嘅時間串埋一齊 (例如: "3分鐘 ｜ 12分鐘")
                     item.times.sort((a, b) => a.timeVal - b.timeVal);
                     const combinedTimes = item.times.slice(0, 2).map(t => t.timeStr).join(' ｜ ');
 

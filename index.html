@@ -30,7 +30,7 @@
     <!-- 主體內容區 -->
     <main class="container mx-auto p-4 max-w-md flex-grow">
 
-        <!-- 常用線路快捷按鈕 -->
+        <!-- 常用線路快捷按鈕 (已包 213X) -->
         <div class="bg-white rounded-2xl p-4 shadow mb-6">
             <h2 class="text-xl font-bold mb-3 text-gray-700">⭐ 常用巴士線</h2>
             <div class="grid grid-cols-3 gap-3">
@@ -47,7 +47,7 @@
         <div class="bg-white rounded-2xl p-4 shadow mb-6">
             <h2 class="text-xl font-bold mb-2 text-gray-700">🔎 輸入其他路線</h2>
             <div class="flex gap-2">
-                <input type="text" id="customRouteInput" placeholder="例如: 13X" class="border-2 border-gray-300 rounded-xl p-3 text-2xl w-full uppercase text-center font-bold">
+                <input type="text" id="customRouteInput" placeholder="例如: 213X" class="border-2 border-gray-300 rounded-xl p-3 text-2xl w-full uppercase text-center font-bold">
                 <button onclick="searchCustomRoute()" class="bg-green-600 text-white px-6 rounded-xl text-xl font-bold shadow">查詢</button>
             </div>
         </div>
@@ -76,8 +76,9 @@
     <!-- JavaScript 邏輯 -->
     <script>
         function selectRoute(routeStr) {
-            document.getElementById('customRouteInput').value = routeStr;
-            fetchRouteDirections(routeStr);
+            const cleanRoute = routeStr.trim().toUpperCase();
+            document.getElementById('customRouteInput').value = cleanRoute;
+            fetchRouteDirections(cleanRoute);
         }
 
         function searchCustomRoute() {
@@ -93,7 +94,7 @@
             document.getElementById('resultContainer').classList.add('hidden');
         }
 
-        // 1. 取得來回方向
+        // 1. 取得來回方向（確保轉成大階先 Call API）
         async function fetchRouteDirections(route) {
             const container = document.getElementById('resultContainer');
             const dirEl = document.getElementById('directionSelector');
@@ -106,7 +107,10 @@
             listEl.innerHTML = '';
 
             try {
-                const response = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route/${route}`);
+                // 強制轉大階確保 213X 呢類英文字母正確送出
+                const url = `https://data.etabus.gov.hk/v1/transport/kmb/route/${route}`;
+                const response = await fetch(url);
+                
                 if (!response.ok) throw new Error('網絡請求失敗');
                 
                 const json = await response.json();
@@ -131,7 +135,7 @@
 
             } catch (err) {
                 console.error(err);
-                dirEl.innerHTML = `<p class="text-red-500 font-bold text-center py-2">❌ 查詢唔到「${route}」，請確定輸入正確嘅九巴號碼（例如 1A, 6）。</p>`;
+                dirEl.innerHTML = `<p class="text-red-500 font-bold text-center py-2">❌ 搵唔到「${route}」，請確定輸入正確嘅九巴號碼（例如 213X、1A）。</p>`;
             }
         }
 
@@ -144,7 +148,6 @@
             listEl.innerHTML = `<p class="text-center text-xl text-blue-600 py-4">⏳ 正在讀取「${dest}」方向嘅車站...</p>`;
 
             try {
-                // 拎站點清單
                 const stopsRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${bound}/${serviceType}`);
                 const stopsJson = await stopsRes.json();
 
@@ -155,7 +158,7 @@
                 const stops = stopsJson.data;
                 listEl.innerHTML = '';
 
-                // 為了老人家看得舒服，先展示前 5 個主要站點
+                // 展示前 5 個主要站點
                 let count = 0;
                 for (let item of stops) {
                     if (count >= 5) break; 
@@ -172,7 +175,6 @@
                         }
                     } catch(e) {}
 
-                    // 拎 ETA
                     let timeStr = '暫無資料';
                     try {
                         const etaRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);

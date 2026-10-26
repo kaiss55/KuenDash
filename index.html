@@ -18,7 +18,7 @@
         <p class="text-sm mt-1">手機專用 · 一撳即轉模式</p>
     </header>
 
-    <!-- 頂部超大分頁切換掣（手機 100% 靈敏） -->
+    <!-- 頂部超大分頁切換掣 -->
     <div class="grid grid-cols-2 bg-blue-800 text-white p-2 gap-2 shadow-md">
         <button onclick="switchTab(1)" id="tabBtn1" class="py-3 px-2 rounded-xl text-center font-black text-base bg-yellow-400 text-blue-900 shadow">
             📑 1. 查指定路線
@@ -87,7 +87,6 @@
 
     <!-- JavaScript 邏輯 -->
     <script>
-        // --- 手機專用 Tab 切換函數 ---
         function switchTab(tabIndex) {
             const sec1 = document.getElementById('section1');
             const sec2 = document.getElementById('section2');
@@ -107,7 +106,6 @@
             }
         }
 
-        // --- 畫面 1 邏輯 ---
         let currentRoute = '';
         let currentDirection = 'outbound';
         let cachedRouteStops = [];
@@ -259,7 +257,7 @@
         }
 
 
-        // --- 畫面 2 邏輯 ---
+        // --- 畫面 2 邏輯 (已加入防重覆與合併處理) ---
         async function findAllNearbyStops() {
             const box = document.getElementById('nearbyAllBox');
             box.innerHTML = `<div class="bg-white rounded-2xl p-6 shadow text-center text-blue-600 font-bold text-lg">🛰️ 正在獲取您的 GPS 位置並掃描附近車站...</div>`;
@@ -326,28 +324,51 @@
                     return;
                 }
 
-                container.innerHTML = '';
-                const etas = json.data.slice(0, 5);
-
-                etas.forEach(e => {
+                // 🌟 防重覆與合併處理 (Dedup & Group by Route)
+                let routeMap = {};
+                
+                json.data.forEach(e => {
                     const route = e.route;
                     const dest = e.dest_tc || '指定方向';
+                    // 用 Route + Dest 做 Key，確保同一條線唔同方向分開，但同方向嘅多個班次合併
+                    const key = `${route}-${dest}`; 
+
                     let timeStr = '到達中';
+                    let timeVal = 999; // 用於排序
                     if (e.eta) {
                         const diff = Math.round((new Date(e.eta) - new Date()) / 60000);
+                        timeVal = diff;
                         timeStr = diff <= 0 ? '即將到站' : `${diff}分鐘`;
                     }
+
+                    if (!routeMap[key]) {
+                        routeMap[key] = { route, dest, times: [] };
+                    }
+                    routeMap[key].times.push({ timeStr, timeVal });
+                });
+
+                container.innerHTML = '';
+                
+                // 轉返做 Array 並按最快到站時間排序
+                let uniqueRoutes = Object.values(routeMap);
+                
+                // 限制最多顯示 5 條唔同嘅路線
+                uniqueRoutes.slice(0, 5).forEach(item => {
+                    // 取頭兩班車嘅時間串埋一齊 (例如: "3分鐘 ｜ 12分鐘")
+                    item.times.sort((a, b) => a.timeVal - b.timeVal);
+                    const combinedTimes = item.times.slice(0, 2).map(t => t.timeStr).join(' ｜ ');
 
                     container.innerHTML += `
                         <div class="bg-gray-50 p-2.5 rounded-xl flex justify-between items-center border border-gray-100">
                             <div>
-                                <span class="bg-blue-600 text-white font-black px-2 py-0.5 rounded text-base">${route}</span>
-                                <span class="text-gray-700 font-bold ml-2">往 ${dest}</span>
+                                <span class="bg-blue-600 text-white font-black px-2.5 py-1 rounded text-base">${item.route}</span>
+                                <span class="text-gray-700 font-bold ml-2">往 ${item.dest}</span>
                             </div>
-                            <span class="text-red-600 font-black text-lg">${timeStr}</span>
+                            <span class="text-red-600 font-black text-lg">${combinedTimes}</span>
                         </div>
                     `;
                 });
+
             } catch (e) {
                 document.getElementById(containerId).innerHTML = `<p class="text-red-500">無法讀取 ETA</p>`;
             }
@@ -363,59 +384,4 @@
         }
         function deg2rad(deg) { return deg * (Math.PI/180); }
 
-        async function fetchStopEtasForRoute(stopId, route, cardId) {
-            try {
-                const res = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);
-                const etaJson = await res.json();
-                let etaText = '暫無車到';
-                if (etaJson.data) {
-                    const match = etaJson.data.filter(e => e.route.toUpperCase() === route.toUpperCase());
-                    if (match.length > 0) {
-                        etaText = match.map(e => {
-                            if (!e.eta) return '到達中';
-                            const diff = Math.round((new Date(e.eta) - new Date()) / 60000);
-                            return diff <= 0 ? '即將到站' : `${diff}分鐘`;
-                        }).slice(0, 2).join(' ｜ ');
-                    }
-                }
-                const card = document.getElementById(cardId);
-                if (card) card.querySelector('.text-lg').innerText = `⏱️ ${etaText}`;
-            } catch (e) {}
-        }
-
-        async function fetchStopDetails(stopId, route, cardId) {
-            try {
-                const stopRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop/${stopId}`);
-                const stopJson = await stopRes.json();
-                const stopName = stopJson.data ? stopJson.data.name_tc : stopId;
-
-                const etaRes = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${stopId}`);
-                const etaJson = await etaRes.json();
-                
-                let etaText = '暫無資料';
-                if (etaJson.data) {
-                    const match = etaJson.data.filter(e => e.route.toUpperCase() === route.toUpperCase());
-                    if (match.length > 0) {
-                        etaText = match.map(e => {
-                            if (!e.eta) return '到達中';
-                            const diff = Math.round((new Date(e.eta) - new Date()) / 60000);
-                            return diff <= 0 ? '即將到站' : `${diff}分鐘`;
-                        }).slice(0, 2).join(' ｜ ');
-                    }
-                }
-
-                const card = document.getElementById(cardId);
-                if (card) {
-                    card.innerHTML = `
-                        <div class="text-xs text-gray-500 font-bold">${card.querySelector('.text-xs').innerText}</div>
-                        <div class="text-lg font-bold text-gray-800">${stopName}</div>
-                        <div class="text-xl font-black text-red-600 bg-white p-2 rounded-lg text-center mt-1 border border-red-100">
-                            ⏱️ ${etaText}
-                        </div>
-                    `;
-                }
-            } catch (e) {}
-        }
-    </script>
-</body>
-</html>
+        async function fetchStopEtas
